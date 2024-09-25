@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server-Rendered Snake Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+</head>
+<body>
+    <div id="game-container"></div>
+    <script>
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            scene: {
+                create: create,
+                update: update
+            }
+        };
+
+        let game;
+        let snake;
+        let food;
+        let ws;
+
+        function create() {
+            this.add.rectangle(400, 300, 800, 600, 0x000000);
+            snake = this.add.group();
+            food = this.add.rectangle(0, 0, 10, 10, 0xff0000);
+            
+            // Connect to WebSocket server
+            ws = new WebSocket(`ws://${window.location.host}`);
+
+            ws.onmessage = (event) => {
+                const gameState = JSON.parse(event.data);
+                updateGameState(this, gameState);
+            };
+
+            // Set up keyboard input
+            this.input.keyboard.on('keydown', handleKeyDown);
+        }
+
+        function update() {
+            // Client-side update logic (if needed)
+        }
+
+        function updateGameState(scene, gameState) {
+            // Update snake
+            snake.clear(true, true);
+            gameState.snake.forEach(segment => {
+                snake.add(scene.add.rectangle(segment.x + 5, segment.y + 5, 10, 10, 0x00ff00));
+            });
+
+            // Update food
+            food.setPosition(gameState.food.x + 5, gameState.food.y + 5);
+        }
+
+        function handleKeyDown(event) {
+            const key = event.key;
+            let direction;
+
+            switch (key) {
+                case 'ArrowUp':
+                    direction = 'up';
+                    break;
+                case 'ArrowDown':
+                    direction = 'down';
+                    break;
+                case 'ArrowLeft':
+                    direction = 'left';
+                    break;
+                case 'ArrowRight':
+                    direction = 'right';
+                    break;
+                default:
+                    return;
+            }
+
+            ws.send(JSON.stringify({ direction }));
+        }
+
+        game = new Phaser.Game(config);
+    </script>
+</body>
+</html>
