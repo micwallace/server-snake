@@ -18,6 +18,8 @@ const GAME_SPEED = 100; // milliseconds between updates
 
 // Game variables
 let gameState = {
+  lastTimestamp: null,
+  numFrames: 0,
   snake: [],
   direction: 'RIGHT',
   food: {}
@@ -25,7 +27,15 @@ let gameState = {
 
 // Initialize the game
 function initGame() {
-  gameState.snake = [];
+
+  gameState = {
+    lastTimestamp: null,
+    numFrames: 0,
+    snake: [],
+    direction: 'RIGHT',
+    food: {}
+  };
+
   for (let i = 0; i < INITIAL_SNAKE_LENGTH; i++) {
     gameState.snake.push({ x: 200 - i * SNAKE_SIZE, y: 200 });
   }
@@ -62,13 +72,17 @@ function updateGame() {
 
   // Check for wall collision
   if (head.x < 0 || head.x >= GAME_WIDTH || head.y < 0 || head.y >= GAME_HEIGHT) {
+    console.log("Wall collision");
     initGame();
+    broadcastUpdate(true);
     return;
   }
 
   // Check for self collision
   if (gameState.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+    console.log("Self collision");
     initGame();
+    broadcastUpdate(true);
     return;
   }
 
@@ -77,7 +91,9 @@ function updateGame() {
 
   // Check for food collision
   if (head.x === gameState.food.x && head.y === gameState.food.y) {
+    console.log("Food collision");
     placeFood();
+    broadcastUpdate();
   } else {
     gameState.snake.pop();
   }
@@ -88,7 +104,8 @@ wss.on('connection', (ws) => {
   console.log('Client connected');
 
   // Send initial game state
-  sendGameState(ws);
+  initGame();
+  sendGameState(ws, true);
 
   // Handle messages from the client
   ws.on('message', (message) => {
@@ -101,13 +118,51 @@ wss.on('connection', (ws) => {
   });
 });
 
+function broadcastUpdate(resetSnake){
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      sendGameState(client, resetSnake);
+    }
+  });
+}
+
 // Send game state to the client
-function sendGameState(ws) {
-  ws.send(JSON.stringify(gameState));
+function sendGameState(ws, resetSnake) {
+  console.log("Sending update to client: ", gameState);
+
+  const data = {food: gameState.food, direction: gameState.direction};
+
+  if (resetSnake){
+    data.snake = gameState.snake
+  }
+
+  ws.send(JSON.stringify(data));
 }
 
 // Handle player input
 function handlePlayerInput(data) {
+
+  console.log("Player input: ", data);
+
+  // Set initial timestamp
+  if (!gameState.lastTimestamp){
+    console.log("Server game initialized...");
+    gameState.lastTimestamp = data.ts;
+    //broadcastUpdate(true);
+  } else {
+    console.log(`Frame: ${data.frame}`);
+    const steps = data.frame - gameState.numFrames;
+    console.log("Simulating steps: ", steps);
+    // Run the game simulation for n steps based on the delta & game speed
+    for (let i=0; i<steps; i++){
+      updateGame();
+    }
+    gameState.numFrames = data.frame;
+    gameState.lastTimestamp = data.ts;
+  }
+
+  console.log(`Snake head:`, gameState.snake[0]);
+
   const newDirection = data.direction.toUpperCase();
   const currentDirection = gameState.direction;
 
@@ -123,23 +178,23 @@ function handlePlayerInput(data) {
 }
 
 // Game loop
-function gameLoop() {
+/*function gameLoop() {
   updateGame();
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       sendGameState(client);
     }
   });
-}
+}*/
 
 // Initialize the game
 initGame();
 
 // Start the game loop
-setInterval(gameLoop, GAME_SPEED);
+//setInterval(gameLoop, GAME_SPEED);
 
 // Start the server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
 });

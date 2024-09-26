@@ -9,6 +9,12 @@
 <body>
     <div id="game-container"></div>
     <script>
+        const GAME_WIDTH = 800;
+        const GAME_HEIGHT = 600;
+        const SNAKE_SIZE = 10;
+        const INITIAL_SNAKE_LENGTH = 5;
+        const SNAKE_SPEED = 100;
+
         const config = {
             type: Phaser.AUTO,
             width: 800,
@@ -17,15 +23,32 @@
             scene: {
                 create: create,
                 update: update
-            }
+            },
+            physics: {
+                default: 'arcade',
+            },
+            forceSetTimeOut: true
         };
 
+        let ts;
+        let lastFrameTime = 0;
+        let numFrames = 0;
         let game;
         let snake;
         let food;
         let ws;
 
+        // Game variables
+        let gameState = {
+            snake: [],
+            direction: 'RIGHT',
+            food: {}
+        };
+
         function create() {
+            this.physics.world.fixedStep = true;
+            this.physics.world.setFPS(30);
+
             this.add.rectangle(400, 300, 800, 600, 0x000000);
             snake = this.add.group();
             food = this.add.rectangle(0, 0, 10, 10, 0xff0000);
@@ -38,47 +61,144 @@
                 updateGameState(this, gameState);
             };
 
+            ws.onopen = () => {
+
+            }
+
             // Set up keyboard input
             this.input.keyboard.on('keydown', handleKeyDown);
         }
 
-        function update() {
-            // Client-side update logic (if needed)
-        }
+        function update(time, delta) {
+            if (!ts)
+                return;
 
-        function updateGameState(scene, gameState) {
-            // Update snake
+            if (time - lastFrameTime < SNAKE_SPEED){
+                return;
+            }
+
+            lastFrameTime = time;
+            numFrames++;
+
+            const head = { ...gameState.snake[0] };
+
+            switch (gameState.direction) {
+                case 'UP':
+                    head.y -= SNAKE_SIZE;
+                    break;
+                case 'DOWN':
+                    head.y += SNAKE_SIZE;
+                    break;
+                case 'LEFT':
+                    head.x -= SNAKE_SIZE;
+                    break;
+                case 'RIGHT':
+                    head.x += SNAKE_SIZE;
+                    break;
+            }
+
+            // Check for wall collision
+            if (head.x < 0 || head.x >= GAME_WIDTH || head.y < 0 || head.y >= GAME_HEIGHT) {
+                console.log("Wall collision");
+                resetGame();
+                return;
+            }
+
+            // Check for self collision
+            if (gameState.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+                console.log("Self collision", gameState.snake, head);
+                resetGame();
+                return;
+            }
+
+            // Move snake
+            gameState.snake.unshift(head);
+
+            // Check for food collision
+            if (head.x === gameState.food.x && head.y === gameState.food.y) {
+                console.log("Food collision");
+                food.setVisible(false);
+                sendServerUpdate(); // Notify server to move simulation forward and get the next food location
+            } else {
+                gameState.snake.pop();
+            }
+
+            // TODO: Reposition segments rather than redrawing the whole snake
             snake.clear(true, true);
             gameState.snake.forEach(segment => {
-                snake.add(scene.add.rectangle(segment.x + 5, segment.y + 5, 10, 10, 0x00ff00));
+                snake.add(this.add.rectangle(segment.x + 5, segment.y + 5, 10, 10, 0x00ff00));
             });
+        }
+
+        function resetGame(){
+            sendServerUpdate(); // Notify server to move simulation forward
+            ts = null;
+            numFrames = 0;
+            lastFrameTime = 0;
+        }
+
+        function updateGameState(scene, serverGameState) {
+
+            console.log("Update from server: ", serverGameState);
 
             // Update food
-            food.setPosition(gameState.food.x + 5, gameState.food.y + 5);
+            gameState.food = serverGameState.food;
+            food.setPosition(serverGameState.food.x + 5, serverGameState.food.y + 5);
+            food.setVisible(true);
+
+            // Update snake
+            if (serverGameState.snake) {
+                snake.clear(true, true);
+                gameState.snake = serverGameState.snake;
+                gameState.snake.forEach(segment => {
+                    snake.add(scene.add.rectangle(segment.x + 5, segment.y + 5, 10, 10, 0x00ff00));
+                });
+                gameState.direction = serverGameState.direction;
+                console.log("Snake placed");
+                ts = Date.now();
+                sendServerUpdate();
+            }
+
         }
 
         function handleKeyDown(event) {
+
+            ts = Date.now();
+
             const key = event.key;
             let direction;
 
             switch (key) {
                 case 'ArrowUp':
-                    direction = 'up';
+                    if (gameState.direction !== "DOWN")
+                        direction = 'UP';
                     break;
                 case 'ArrowDown':
-                    direction = 'down';
+                    if (gameState.direction !== "UP")
+                        direction = 'DOWN';
                     break;
                 case 'ArrowLeft':
-                    direction = 'left';
+                    if (gameState.direction !== "RIGHT")
+                        direction = 'LEFT';
                     break;
                 case 'ArrowRight':
-                    direction = 'right';
+                    if (gameState.direction !== "LEFT")
+                        direction = 'RIGHT';
                     break;
                 default:
                     return;
             }
 
-            ws.send(JSON.stringify({ direction }));
+            if (!direction)
+                return;
+
+            gameState.direction = direction;
+            sendServerUpdate();
+        }
+
+        function sendServerUpdate(){
+            console.log(`Frame: ${numFrames}`);
+            ws.send(JSON.stringify({ ts, frame: numFrames, direction: gameState.direction }));
         }
 
         game = new Phaser.Game(config);
