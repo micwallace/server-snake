@@ -36,6 +36,7 @@
         let game;
         let snake;
         let food;
+        let scoreText;
         let ws;
 
         // Game variables
@@ -52,6 +53,9 @@
             this.add.rectangle(400, 300, 800, 600, 0x000000);
             snake = this.add.group();
             food = this.add.rectangle(0, 0, 10, 10, 0xff0000);
+            scoreText = this.add.text(10, 10, 0);
+            scoreText.setFont("Arial");
+            scoreText.setFontSize("32px");
             
             // Connect to WebSocket server
             ws = new WebSocket(`ws://${window.location.host}`);
@@ -140,6 +144,9 @@
         function updateGameState(scene, serverGameState) {
 
             console.log("Update from server: ", serverGameState);
+
+            // Update score
+            scoreText.setText(serverGameState.score);
 
             // Update food
             gameState.food = serverGameState.food;

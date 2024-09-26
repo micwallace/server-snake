@@ -17,13 +17,7 @@ const INITIAL_SNAKE_LENGTH = 5;
 const GAME_SPEED = 100; // milliseconds between updates
 
 // Game variables
-let gameState = {
-  lastTimestamp: null,
-  numFrames: 0,
-  snake: [],
-  direction: 'RIGHT',
-  food: {}
-};
+let gameState;
 
 // Initialize the game
 function initGame() {
@@ -31,6 +25,7 @@ function initGame() {
   gameState = {
     lastTimestamp: null,
     numFrames: 0,
+    score: 0,
     snake: [],
     direction: 'RIGHT',
     food: {}
@@ -92,6 +87,7 @@ function updateGame() {
   // Check for food collision
   if (head.x === gameState.food.x && head.y === gameState.food.y) {
     console.log("Food collision");
+    gameState.score++;
     placeFood();
     broadcastUpdate();
   } else {
@@ -128,13 +124,14 @@ function broadcastUpdate(resetSnake){
 
 // Send game state to the client
 function sendGameState(ws, resetSnake) {
-  console.log("Sending update to client: ", gameState);
 
-  const data = {food: gameState.food, direction: gameState.direction};
+  const data = {food: gameState.food, direction: gameState.direction, score: gameState.score};
 
   if (resetSnake){
     data.snake = gameState.snake
   }
+
+  console.log("Sending update to client: ", data);
 
   ws.send(JSON.stringify(data));
 }
